@@ -16,16 +16,16 @@ except Exception as e:
 
 app = FastAPI(
     title="Happy Contractor API",
-    description="Multi-tenant SaaS — Construction Management",
     version="2.0.0",
     docs_url="/api/docs",
     redoc_url="/api/redoc"
 )
 
+origins = settings.cors_origins_list
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins_list,
-    allow_credentials=True,
+    allow_origins=origins,
+    allow_credentials=False if origins == ["*"] else True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
