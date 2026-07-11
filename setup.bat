@@ -1,0 +1,9 @@
+@echo off
+echo Installing backend dependencies...
+pip install -r requirements.txt
+echo.
+echo Running seed script...
+python seed.py
+echo.
+echo Starting server...
+uvicorn app.main:app --reload
