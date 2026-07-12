@@ -2,7 +2,7 @@ from pydantic_settings import BaseSettings
 from typing import List
 
 class Settings(BaseSettings):
-    DATABASE_URL: str = "postgresql://postgres.zbeknrhjtpmiyvncajhb:Balaji%40006%23@aws-0-ap-northeast-1.pooler.supabase.com:5432/postgres"
+    DATABASE_URL: str = "postgresql://postgres.zbeknrhjtpmiyvncajhb:Vishwanath2024@aws-0-ap-northeast-1.pooler.supabase.com:5432/postgres"
     SECRET_KEY: str = "hc-secret-key-vishwanath-2024-xk92"
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 10080
@@ -10,7 +10,6 @@ class Settings(BaseSettings):
     SUPER_ADMIN_PASSWORD: str = "jai@2024"
     SUPER_ADMIN_EMAIL: str = "jaisankar@happycontractor.in"
     ENVIRONMENT: str = "production"
-    CORS_ORIGINS: str = "*"
 
     @property
     def cors_origins_list(self) -> List[str]:
