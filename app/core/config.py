@@ -2,7 +2,7 @@ from pydantic_settings import BaseSettings
 from typing import List
 
 class Settings(BaseSettings):
-    DATABASE_URL: str = "postgresql://postgres.uqrvnadpkzxnggnhbyjt:xdn4mBzfIrFnarp4@aws-1-ap-southeast-2.pooler.supabase.com:5432/postgres"
+    DATABASE_URL: str = "postgresql://postgres.uqrvnadpkzxnggnhbyjt:A1vt0vZYGfH82Vp8@aws-1-ap-southeast-2.pooler.supabase.com:5432/postgres"
     SECRET_KEY: str = "hc-secret-key-vishwanath-2024-xk92"
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 10080
