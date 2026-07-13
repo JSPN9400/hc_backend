@@ -57,7 +57,7 @@ def health():
 
 
 # ── ONE-TIME SEED ENDPOINT ─────────────────────────────────
-@app.post("/api/seed-now")
+@app.get("/api/seed-now")
 def run_seed():
     """One-time seed endpoint — delete after use"""
     try:
