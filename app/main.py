@@ -96,7 +96,7 @@ def run_seed():
             if not db.query(User).filter(User.tenant_id==TENANT_ID,User.username==uname).first():
                 db.add(User(
                     id=gen_id(),tenant_id=TENANT_ID,name=name,username=uname,
-                    password_hash=get_password_hash(pw),role=role,is_active=True,
+                    password_hash=get_password_hash(pw[:72]),role=role,is_active=True,
                     perm_sites=s,perm_workers=w,perm_attendance=a,perm_expenses=e,
                     perm_salary=sal,perm_reports=r,perm_users=u,perm_edit=ed
                 ))
