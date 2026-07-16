@@ -63,6 +63,11 @@ class LeaveType(str, enum.Enum):
     EL = "EL"  # Earned Leave
     LWP = "LWP" # Leave Without Pay
 
+class AccountTypeEnum(str, enum.Enum):
+    bank = "bank"
+    cash = "cash"
+    upi = "upi"
+
 
 # ─────────────────────────────────────────────
 # TENANT (Company)
@@ -90,6 +95,36 @@ class Tenant(Base):
     workers       = relationship("Worker", back_populates="tenant", cascade="all, delete")
     vendors       = relationship("Vendor", back_populates="tenant", cascade="all, delete")
     expenses      = relationship("Expense", back_populates="tenant", cascade="all, delete")
+    bank_accounts = relationship("BankAccount", back_populates="tenant", cascade="all, delete")
+
+
+# ─────────────────────────────────────────────
+# BANK ACCOUNT (Bank / Cash / UPI ledger)
+# ─────────────────────────────────────────────
+class BankAccount(Base):
+    __tablename__ = "bank_accounts"
+
+    id              = Column(String, primary_key=True, default=gen_uuid)
+    tenant_id       = Column(String, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
+    account_name    = Column(String(200), nullable=False)   # e.g. "HDFC Current a/c", "Site Cash"
+    account_type    = Column(Enum(AccountTypeEnum), default=AccountTypeEnum.bank)
+    bank_name       = Column(String(150))
+    account_number  = Column(String(50))
+    ifsc_code       = Column(String(15))
+    branch          = Column(String(150))
+    opening_balance = Column(Float, default=0)
+    opening_date    = Column(Date)
+    is_active       = Column(Boolean, default=True)
+    is_default_cash = Column(Boolean, default=False)  # the default "Cash" account for the tenant
+    note            = Column(String(500))
+    created_at      = Column(DateTime, server_default=func.now())
+
+    tenant          = relationship("Tenant", back_populates="bank_accounts")
+    expenses        = relationship("Expense", back_populates="account")
+
+    __table_args__ = (
+        Index("ix_bank_accounts_tenant", "tenant_id"),
+    )
 
 
 # ─────────────────────────────────────────────
@@ -284,6 +319,7 @@ class Expense(Base):
     tenant_id     = Column(String, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
     site_id       = Column(String, ForeignKey("sites.id", ondelete="SET NULL"), nullable=True)
     vendor_id     = Column(String, ForeignKey("vendors.id", ondelete="SET NULL"), nullable=True)
+    account_id    = Column(String, ForeignKey("bank_accounts.id", ondelete="SET NULL"), nullable=True)
 
     date          = Column(Date, nullable=False)
     vendor_name   = Column(String(300))  # denormalized for quick display
@@ -309,12 +345,14 @@ class Expense(Base):
     tenant        = relationship("Tenant", back_populates="expenses")
     site          = relationship("Site", back_populates="expenses")
     vendor        = relationship("Vendor", back_populates="expenses")
+    account       = relationship("BankAccount", back_populates="expenses")
     entered_user  = relationship("User", foreign_keys=[entered_by])
     approved_user = relationship("User", foreign_keys=[approved_by])
 
     __table_args__ = (
         Index("ix_expenses_tenant_date", "tenant_id", "date"),
         Index("ix_expenses_site", "site_id"),
+        Index("ix_expenses_account", "account_id"),
     )
 
 

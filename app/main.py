@@ -23,6 +23,9 @@ from app.api.v1.endpoints.misc import (
     vendors_router, advances_router, leaves_router,
     users_router, dashboard_router, reports_router
 )
+from app.api.v1.endpoints.accounts import (
+    bank_accounts_router, ledger_router, cashbook_router
+)
 
 PREFIX = "/api/v1"
 app.include_router(auth.router,        prefix=PREFIX)
@@ -37,6 +40,9 @@ app.include_router(leaves_router,      prefix=PREFIX)
 app.include_router(users_router,       prefix=PREFIX)
 app.include_router(dashboard_router,   prefix=PREFIX)
 app.include_router(reports_router,     prefix=PREFIX)
+app.include_router(bank_accounts_router, prefix=PREFIX)
+app.include_router(ledger_router,      prefix=PREFIX)
+app.include_router(cashbook_router,    prefix=PREFIX)
 
 @app.on_event("startup")
 async def startup():
@@ -145,3 +151,7 @@ def run_seed():
         }
     except Exception as e:
         return {"status": "❌ Error", "detail": str(e)}
+
+# RA Bills router
+from app.api.v1.endpoints.ra_bills import router as ra_bills_router
+app.include_router(ra_bills_router, prefix=PREFIX)

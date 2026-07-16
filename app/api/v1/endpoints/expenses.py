@@ -20,6 +20,10 @@ def enrich(e: Expense, db: Session) -> ExpenseOut:
     if e.site_id:
         s = db.query(Site).filter(Site.id == e.site_id).first()
         out.site_name = s.name if s else None
+    if e.account_id:
+        from app.models.models import BankAccount
+        acc = db.query(BankAccount).filter(BankAccount.id == e.account_id).first()
+        out.account_name = acc.account_name if acc else None
     if e.entered_by:
         u = db.query(User).filter(User.id == e.entered_by).first()
         out.entered_by = u.name if u else None

@@ -3,7 +3,7 @@ from typing import Optional, List, Dict, Any
 from datetime import date, datetime
 from app.models.models import (
     PlanEnum, RoleEnum, SiteStatusEnum, WorkerTypeEnum,
-    AttendanceStatus, ExpenseStatus, LeaveStatus, LeaveType
+    AttendanceStatus, ExpenseStatus, LeaveStatus, LeaveType, AccountTypeEnum
 )
 
 
@@ -304,6 +304,7 @@ class VendorOut(BaseModel):
 class ExpenseCreate(BaseModel):
     site_id: Optional[str] = None
     vendor_id: Optional[str] = None
+    account_id: Optional[str] = None
     date: date
     vendor_name: Optional[str] = None
     payer_name: Optional[str] = None
@@ -324,6 +325,8 @@ class ExpenseOut(BaseModel):
     site_name: Optional[str] = None
     vendor_id: Optional[str] = None
     vendor_name: Optional[str] = None
+    account_id: Optional[str] = None
+    account_name: Optional[str] = None
     payer_name: Optional[str] = None
     date: date
     category: Optional[str] = None
@@ -421,6 +424,94 @@ class SitePL(BaseModel):
     total_receipt: float
     balance: float
     worker_count: int
+
+
+# ─── BANK ACCOUNT ───
+class BankAccountCreate(BaseModel):
+    account_name: str
+    account_type: AccountTypeEnum = AccountTypeEnum.bank
+    bank_name: Optional[str] = None
+    account_number: Optional[str] = None
+    ifsc_code: Optional[str] = None
+    branch: Optional[str] = None
+    opening_balance: float = 0
+    opening_date: Optional[date] = None
+    note: Optional[str] = None
+
+class BankAccountUpdate(BaseModel):
+    account_name: Optional[str] = None
+    account_type: Optional[AccountTypeEnum] = None
+    bank_name: Optional[str] = None
+    account_number: Optional[str] = None
+    ifsc_code: Optional[str] = None
+    branch: Optional[str] = None
+    opening_balance: Optional[float] = None
+    opening_date: Optional[date] = None
+    is_active: Optional[bool] = None
+    note: Optional[str] = None
+
+class BankAccountOut(BaseModel):
+    id: str
+    account_name: str
+    account_type: AccountTypeEnum
+    bank_name: Optional[str] = None
+    account_number: Optional[str] = None
+    ifsc_code: Optional[str] = None
+    branch: Optional[str] = None
+    opening_balance: float = 0
+    opening_date: Optional[date] = None
+    is_active: bool
+    is_default_cash: bool = False
+    note: Optional[str] = None
+    created_at: Optional[datetime] = None
+    # computed
+    total_in: float = 0
+    total_out: float = 0
+    current_balance: float = 0
+    class Config:
+        from_attributes = True
+
+class LedgerRow(BaseModel):
+    date: date
+    description: str
+    ref: Optional[str] = None
+    debit: float = 0
+    credit: float = 0
+    balance: float = 0
+    mode: Optional[str] = None
+    status: Optional[str] = None
+
+class PartyLedgerOut(BaseModel):
+    party_name: str
+    opening_balance: float = 0
+    rows: List[LedgerRow] = []
+    total_debit: float = 0
+    total_credit: float = 0
+    closing_balance: float = 0
+
+class BankStatementOut(BaseModel):
+    account: BankAccountOut
+    rows: List[LedgerRow] = []
+    total_in: float = 0
+    total_out: float = 0
+    closing_balance: float = 0
+
+class CashBookDay(BaseModel):
+    date: date
+    opening_balance: float = 0
+    cash_in: float = 0
+    cash_out: float = 0
+    closing_balance: float = 0
+    rows: List[LedgerRow] = []
+
+class CashBookOut(BaseModel):
+    date_from: date
+    date_to: date
+    opening_balance: float = 0
+    total_in: float = 0
+    total_out: float = 0
+    closing_balance: float = 0
+    days: List[CashBookDay] = []
 
 
 # ─── IMPORT/EXPORT ───

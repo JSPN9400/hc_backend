@@ -5,7 +5,7 @@ from typing import List
 from app.db.session import get_db
 from app.core.deps import get_super_admin
 from app.core.security import get_password_hash
-from app.models.models import Tenant, User, Site, Worker, Expense, RoleEnum
+from app.models.models import Tenant, User, Site, Worker, Expense, RoleEnum, BankAccount, AccountTypeEnum
 from app.schemas.schemas import TenantCreate, TenantUpdate, TenantOut, TenantStats
 import uuid
 
@@ -73,6 +73,14 @@ def create_tenant(
         **perms
     )
     db.add(admin_user)
+
+    # Default Cash account so expenses/cash book work out of the box
+    db.add(BankAccount(
+        id=gen_id(), tenant_id=tenant.id, account_name="Cash",
+        account_type=AccountTypeEnum.cash, opening_balance=0,
+        is_default_cash=True, is_active=True
+    ))
+
     db.commit()
     db.refresh(tenant)
     return tenant
