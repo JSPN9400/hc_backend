@@ -182,6 +182,7 @@ class Site(Base):
     supervisor_id = Column(String, ForeignKey("users.id"), nullable=True)
     status        = Column(Enum(SiteStatusEnum), default=SiteStatusEnum.active)
     budget        = Column(Float, default=0)
+    contract_value = Column(Float, default=0)  # total agreed value with client — for receivable tracking
     start_date    = Column(Date)
     end_date      = Column(Date)
     description   = Column(Text)

@@ -139,6 +139,7 @@ class SiteCreate(BaseModel):
     supervisor_id: Optional[str] = None
     status: SiteStatusEnum = SiteStatusEnum.active
     budget: float = 0
+    contract_value: float = 0
     start_date: Optional[date] = None
     end_date: Optional[date] = None
     description: Optional[str] = None
@@ -155,6 +156,7 @@ class SiteOut(BaseModel):
     location: Optional[str] = None
     status: SiteStatusEnum
     budget: float = 0
+    contract_value: float = 0
     start_date: Optional[date] = None
     end_date: Optional[date] = None
     supervisor_id: Optional[str] = None
