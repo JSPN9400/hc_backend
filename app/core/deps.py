@@ -60,6 +60,8 @@ def get_current_user(
             "reports": user.perm_reports,
             "users": user.perm_users,
             "edit": user.perm_edit,
+                "delete": getattr(user, "perm_delete", False),
+                "delete_admin": getattr(user, "perm_delete_admin", False),
         }
     }
 
