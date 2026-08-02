@@ -48,7 +48,7 @@ def list_expenses(
     db: Session = Depends(get_db)
 ):
     tid = current_user["tenant_id"]
-    q = db.query(Expense).filter(Expense.tenant_id == tid)
+    q = db.query(Expense).filter(Expense.tenant_id == tid, Expense.is_deleted == False)
 
     if site_id:
         q = q.filter(Expense.site_id == site_id)
@@ -92,12 +92,21 @@ def expense_summary(
 ):
     """Category-wise and site-wise summary"""
     tid = current_user["tenant_id"]
-    q = db.query(Expense).filter(Expense.tenant_id == tid)
+    q = db.query(Expense).filter(Expense.tenant_id == tid, Expense.is_deleted == False)
     if month:
         yr, mn = month.split("-")
         q = q.filter(extract("year", Expense.date) == int(yr), extract("month", Expense.date) == int(mn))
     if site_id:
         q = q.filter(Expense.site_id == site_id)
+
+    # BUG FIX: this restriction existed in list_expenses() but was missing here,
+    # so a supervisor could see cost/revenue totals for sites they aren't assigned to.
+    if current_user["role"] == "supervisor":
+        import json
+        assigned = json.loads(current_user.get("assigned_site_ids") or "[]")
+        if assigned:
+            q = q.filter(Expense.site_id.in_(assigned))
+
     exps = q.all()
 
     cat_map, site_map, mode_map = {}, {}, {}
@@ -224,12 +233,17 @@ def delete_expense(
     current_user: dict = Depends(require_perm("edit")),
     db: Session = Depends(get_db)
 ):
+    """
+    BUG FIX: financial records were permanently hard-deleted with no audit
+    trail. Now soft-deletes via is_deleted=True so the record can still be
+    recovered/audited, while list_expenses/summary already filter it out.
+    """
     e = db.query(Expense).filter(Expense.id == expense_id, Expense.tenant_id == current_user["tenant_id"]).first()
     if not e:
         raise HTTPException(404)
-    db.delete(e)
+    e.is_deleted = True
     db.commit()
-    return {"message": "Deleted"}
+    return {"message": "Expense deleted (soft-delete, recoverable by admin)"}
 
 
 @router.post("/import/excel", response_model=ImportResult)

@@ -8,6 +8,7 @@ from app.core.deps import get_current_user, require_perm
 from app.models.models import Attendance, Worker, Site, AttendanceStatus
 from app.schemas.schemas import AttendanceCreate, AttendanceBulk, AttendanceOut, MonthlySummaryItem
 from app.models.models import Advance
+from app.services.payroll import calc_gross_earning, calc_net_payable
 import uuid
 
 router = APIRouter(prefix="/attendance", tags=["attendance"])
@@ -207,7 +208,8 @@ def monthly_summary(
         days_h = sum(1 for a in att if a.status == AttendanceStatus.H)
         days_a = sum(1 for a in att if a.status == AttendanceStatus.A)
         ot_hrs = sum(a.overtime_hours or 0 for a in att)
-        gross = round((days_p + days_h * 0.5) * (w.daily_rate or 0), 2)
+        earning = calc_gross_earning(w, days_p, days_h, ot_hrs)
+        gross = earning["gross_earning"]
 
         advs = db.query(Advance).filter(
             Advance.worker_id == w.id,
@@ -216,7 +218,8 @@ def monthly_summary(
         ).all()
         adv_paid = sum(a.amount for a in advs if a.advance_type != "deduction")
         deductions = sum(a.amount for a in advs if a.advance_type == "deduction")
-        net = gross - adv_paid + deductions + (w.previous_due or 0)
+        # BUG FIX: deductions used to be ADDED to net payable (see payroll.py docstring)
+        net = calc_net_payable(gross, adv_paid, deductions, w.previous_due)
 
         result.append({
             "worker_id": w.id,
@@ -228,11 +231,13 @@ def monthly_summary(
             "half_days": days_h,
             "absent_days": days_a,
             "overtime_hours": ot_hrs,
+            "base_earning": earning["base_earning"],
+            "overtime_pay": earning["overtime_pay"],
             "gross_earning": gross,
             "advance_paid": adv_paid,
             "deductions": deductions,
             "previous_due": w.previous_due or 0,
-            "net_payable": round(net, 2)
+            "net_payable": net
         })
 
     total_gross = sum(r["gross_earning"] for r in result)

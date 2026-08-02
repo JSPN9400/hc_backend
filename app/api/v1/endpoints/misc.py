@@ -253,7 +253,9 @@ dashboard_router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
 @dashboard_router.get("/stats")
 def dashboard_stats(current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
-    tid = current_user["tenant_id"]
+    tid = current_user.get("tenant_id")
+    if not tid:
+        return {"stats":{"total_sites":0,"active_sites":0,"total_workers":0,"active_workers":0,"present_today":0,"half_day_today":0,"absent_today":0,"today_payroll":0,"fy_total_expense":0,"fy_total_receipt":0,"pending_expenses":0,"pending_leaves":0},"site_pl":[],"today_site_attendance":{},"recent_expenses":[]}
     today = date.today()
     yr = today.year
 

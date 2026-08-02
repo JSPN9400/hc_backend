@@ -5,7 +5,7 @@ from typing import List, Optional
 from datetime import date, datetime
 from app.db.session import get_db
 from app.core.deps import get_current_user, require_perm
-from app.models.models import Worker, Attendance, Advance, Site, AttendanceStatus
+from app.models.models import Worker, Attendance, Advance, Site, AttendanceStatus, WorkerTypeEnum
 from app.schemas.schemas import WorkerCreate, WorkerUpdate, WorkerOut, ImportResult
 import uuid, json
 
@@ -15,31 +15,52 @@ router = APIRouter(prefix="/workers", tags=["workers"])
 def gen_id(): return str(uuid.uuid4())
 
 
-def enrich_worker(w: Worker, db: Session, month: str = None) -> WorkerOut:
-    out = WorkerOut.model_validate(w)
-    if w.default_site_id:
-        site = db.query(Site).filter(Site.id == w.default_site_id).first()
-        out.default_site_name = site.name if site else None
+from app.services.payroll import calc_gross_earning, calc_net_payable
 
-    # This month stats
+
+def enrich_worker(w: Worker, db: Session, month: str = None,
+                   site_map: dict = None, att_by_worker: dict = None, adv_by_worker: dict = None) -> WorkerOut:
+    """
+    site_map / att_by_worker / adv_by_worker let callers pre-fetch data in bulk
+    for a list of workers instead of firing 3 extra queries per worker (N+1 fix).
+    When not supplied (e.g. single-worker lookups), falls back to per-worker queries.
+    """
+    out = WorkerOut.model_validate(w)
+
+    if w.default_site_id:
+        if site_map is not None:
+            out.default_site_name = site_map.get(w.default_site_id)
+        else:
+            site = db.query(Site).filter(Site.id == w.default_site_id).first()
+            out.default_site_name = site.name if site else None
+
     now = datetime.now()
     ym = month or f"{now.year}-{now.month:02d}"
     yr, mn = ym.split("-")
-    att = db.query(Attendance).filter(
-        Attendance.worker_id == w.id,
-        extract("year", Attendance.date) == int(yr),
-        extract("month", Attendance.date) == int(mn)
-    ).all()
+
+    if att_by_worker is not None:
+        att = att_by_worker.get(w.id, [])
+    else:
+        att = db.query(Attendance).filter(
+            Attendance.worker_id == w.id,
+            extract("year", Attendance.date) == int(yr),
+            extract("month", Attendance.date) == int(mn)
+        ).all()
+
     days = sum(1 for a in att if a.status == AttendanceStatus.P)
     half = sum(1 for a in att if a.status == AttendanceStatus.H)
+    ot_hours = sum(a.overtime_hours or 0 for a in att)
+    earning = calc_gross_earning(w, days, half, ot_hours)
     out.this_month_days = days
-    out.this_month_gross = round((days + half * 0.5) * (w.daily_rate or 0), 2)
+    out.this_month_gross = earning["gross_earning"]
 
-    # Total advance
-    total_adv = db.query(func.sum(Advance.amount)).filter(
-        Advance.worker_id == w.id
-    ).scalar()
-    out.total_advance = float(total_adv or 0)
+    if adv_by_worker is not None:
+        out.total_advance = float(adv_by_worker.get(w.id, 0))
+    else:
+        total_adv = db.query(func.sum(Advance.amount)).filter(
+            Advance.worker_id == w.id
+        ).scalar()
+        out.total_advance = float(total_adv or 0)
     return out
 
 
@@ -67,7 +88,38 @@ def list_workers(
     if search:
         q = q.filter(Worker.name.ilike(f"%{search}%"))
     workers = q.order_by(Worker.name).all()
-    return [enrich_worker(w, db, month) for w in workers]
+    if not workers:
+        return []
+
+    worker_ids = [w.id for w in workers]
+    now = datetime.now()
+    ym = month or f"{now.year}-{now.month:02d}"
+    yr, mn = ym.split("-")
+
+    # Bulk-fetch: 3 queries total instead of 3 queries PER worker (N+1 fix)
+    site_ids = {w.default_site_id for w in workers if w.default_site_id}
+    site_map = {
+        s.id: s.name for s in db.query(Site).filter(Site.id.in_(site_ids)).all()
+    } if site_ids else {}
+
+    att_rows = db.query(Attendance).filter(
+        Attendance.worker_id.in_(worker_ids),
+        extract("year", Attendance.date) == int(yr),
+        extract("month", Attendance.date) == int(mn)
+    ).all()
+    att_by_worker = {}
+    for a in att_rows:
+        att_by_worker.setdefault(a.worker_id, []).append(a)
+
+    adv_rows = db.query(Advance.worker_id, func.sum(Advance.amount)).filter(
+        Advance.worker_id.in_(worker_ids)
+    ).group_by(Advance.worker_id).all()
+    adv_by_worker = {wid: float(total or 0) for wid, total in adv_rows}
+
+    return [
+        enrich_worker(w, db, month, site_map=site_map, att_by_worker=att_by_worker, adv_by_worker=adv_by_worker)
+        for w in workers
+    ]
 
 
 @router.post("/", response_model=WorkerOut)
@@ -119,12 +171,18 @@ def delete_worker(
     current_user: dict = Depends(require_perm("edit")),
     db: Session = Depends(get_db)
 ):
+    """
+    BUG FIX: this used to hard-delete the worker, cascading to their entire
+    attendance/advance history - permanent data loss with no undo, and a
+    problem for audit trails. Now soft-deletes via is_active=False, same as
+    the rest of the app already assumes (list_workers defaults to is_active=True).
+    """
     w = db.query(Worker).filter(Worker.id == worker_id, Worker.tenant_id == current_user["tenant_id"]).first()
     if not w:
         raise HTTPException(404)
-    db.delete(w)
+    w.is_active = False
     db.commit()
-    return {"message": "Worker deleted"}
+    return {"message": "Worker deactivated (history preserved)"}
 
 
 @router.get("/{worker_id}/ledger")
@@ -156,13 +214,17 @@ def worker_ledger(
 
     days_p = sum(1 for a in att if a.status == AttendanceStatus.P)
     days_h = sum(1 for a in att if a.status == AttendanceStatus.H)
-    gross = round((days_p + days_h * 0.5) * (w.daily_rate or 0), 2)
+    ot_hours = sum(a.overtime_hours or 0 for a in att)
+    earning = calc_gross_earning(w, days_p, days_h, ot_hours)
+    gross = earning["gross_earning"]
+
     total_adv = sum(a.amount for a in advances if a.advance_type not in ["deduction"])
     total_ded = sum(a.amount for a in advances if a.advance_type == "deduction")
-    net = gross - total_adv + total_ded + (w.previous_due or 0)
+    net = calc_net_payable(gross, total_adv, total_ded, w.previous_due)
 
     return {
-        "worker": {"id": w.id, "name": w.name, "role": w.role, "daily_rate": w.daily_rate},
+        "worker": {"id": w.id, "name": w.name, "role": w.role, "daily_rate": w.daily_rate,
+                   "worker_type": w.worker_type.value, "monthly_salary": w.monthly_salary},
         "month": ym,
         "attendance": [
             {"date": str(a.date), "status": a.status.value, "site_id": a.site_id, "overtime_hours": a.overtime_hours}
@@ -175,6 +237,8 @@ def worker_ledger(
         "summary": {
             "days_present": days_p,
             "half_days": days_h,
+            "base_earning": earning["base_earning"],
+            "overtime_pay": earning["overtime_pay"],
             "gross_earning": gross,
             "advance_paid": total_adv,
             "deductions": total_ded,
@@ -205,11 +269,17 @@ async def import_workers_excel(
         if col not in df.columns:
             raise HTTPException(400, f"Column '{col}' missing in Excel")
 
+    # BUG FIX: "Site Code" column was documented but never actually read/mapped
+    # to default_site_id, so imported workers always ended up unassigned.
+    sites = db.query(Site).filter(Site.tenant_id == tid).all()
+    site_code_map = {s.project_code: s.id for s in sites if s.project_code}
+
     for i, row in df.iterrows():
         try:
             name = str(row.get("Name", "")).strip()
             if not name or name == "nan":
                 continue
+            site_code = str(row.get("Site Code", "") or "").strip()
             w = Worker(
                 id=gen_id(),
                 tenant_id=tid,
@@ -219,6 +289,7 @@ async def import_workers_excel(
                 daily_rate=float(row.get("Daily Rate", 0) or 0),
                 aadhar_no=str(row.get("Aadhar", "") or ""),
                 address=str(row.get("Address", "") or ""),
+                default_site_id=site_code_map.get(site_code),
                 worker_type="labour",
                 is_active=True
             )

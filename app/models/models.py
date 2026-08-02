@@ -185,6 +185,7 @@ class Site(Base):
     start_date    = Column(Date)
     end_date      = Column(Date)
     description   = Column(Text)
+    is_deleted    = Column(Boolean, default=False)  # soft-delete: keep history for audit
     created_at    = Column(DateTime, server_default=func.now())
     updated_at    = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
@@ -338,6 +339,7 @@ class Expense(Base):
     approved_at   = Column(DateTime)
     bill_no       = Column(String(100))
     bill_image_url = Column(String(500))
+    is_deleted    = Column(Boolean, default=False)  # soft-delete: keep history for audit
 
     created_at    = Column(DateTime, server_default=func.now())
     updated_at    = Column(DateTime, server_default=func.now(), onupdate=func.now())
