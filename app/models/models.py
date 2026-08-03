@@ -635,3 +635,137 @@ class MaterialTransaction(Base):
     created_at      = Column(DateTime, server_default=func.now())
     site            = relationship("Site", foreign_keys=[site_id])
     __table_args__ = (Index("ix_material_tenant", "tenant_id"),)
+
+
+# ─────────────────────────────────────────────
+# SUB-CONTRACTOR BILLING (money going OUT, mirrors client billing)
+# ─────────────────────────────────────────────
+class SubContractStatus(str, enum.Enum):
+    draft="draft"; active="active"; on_hold="on_hold"; completed="completed"; terminated="terminated"
+
+class SubContractType(str, enum.Enum):
+    labour_only="labour_only"; labour_material="labour_material"; item_rate="item_rate"; lump_sum="lump_sum"
+
+class SubContract(Base):
+    __tablename__ = "sub_contracts"
+    id              = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    tenant_id       = Column(String, nullable=False)
+    contract_no     = Column(String(30))
+    site_id         = Column(String, ForeignKey("sites.id", ondelete="SET NULL"), nullable=True)
+    vendor_id       = Column(String, ForeignKey("vendors.id", ondelete="SET NULL"), nullable=True)
+    subcontractor_name = Column(String(300), nullable=False)   # denormalized for quick display
+    subcontractor_phone = Column(String(20))
+    subcontractor_gstin = Column(String(20))
+    contract_type   = Column(Enum(SubContractType), default=SubContractType.labour_material)
+    status          = Column(Enum(SubContractStatus), default=SubContractStatus.active)
+    contract_value  = Column(Float, default=0)
+    start_date      = Column(Date)
+    end_date        = Column(Date)
+    scope_of_work   = Column(Text)
+    advance_pct     = Column(Float, default=10)
+    advance_paid    = Column(Float, default=0)
+    retention_pct   = Column(Float, default=5)
+    retention_released = Column(Float, default=0)
+    tds_rate        = Column(Float, default=1)   # 194C contractor TDS, typically 1-2%
+    gst_rate        = Column(Float, default=0)   # input GST if subcontractor is registered
+    total_billed    = Column(Float, default=0)
+    total_paid      = Column(Float, default=0)
+    balance_due     = Column(Float, default=0)
+    notes           = Column(Text)
+    created_by      = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at      = Column(DateTime, server_default=func.now())
+    updated_at      = Column(DateTime, server_default=func.now(), onupdate=func.now())
+    site            = relationship("Site", foreign_keys=[site_id])
+    vendor          = relationship("Vendor", foreign_keys=[vendor_id])
+    milestones      = relationship("SubMilestone", back_populates="contract", cascade="all, delete")
+    ra_bills        = relationship("SubRABill", back_populates="contract", cascade="all, delete")
+    __table_args__ = (Index("ix_sub_contracts_tenant", "tenant_id"),)
+
+class SubMilestone(Base):
+    __tablename__ = "sub_milestones"
+    id              = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    contract_id     = Column(String, ForeignKey("sub_contracts.id", ondelete="CASCADE"))
+    si_no           = Column(String(10))
+    description     = Column(String(500), nullable=False)
+    unit            = Column(String(20), default="LS")
+    quantity        = Column(Float, default=0)
+    rate            = Column(Float, default=0)
+    amount          = Column(Float, default=0)
+    payment_pct     = Column(Float, default=100)
+    status          = Column(Enum(MilestoneStatus), default=MilestoneStatus.pending)
+    completion_pct  = Column(Float, default=0)
+    completed_date  = Column(Date)
+    is_parent       = Column(Boolean, default=False)
+    parent_si       = Column(String(10))
+    photo_url       = Column(String(500))
+    notes           = Column(String(500))
+    updated_at      = Column(DateTime, server_default=func.now(), onupdate=func.now())
+    contract        = relationship("SubContract", back_populates="milestones")
+
+class SubRABillStatus(str, enum.Enum):
+    draft="draft"; submitted="submitted"; approved="approved"; partial="partial"; paid="paid"; disputed="disputed"
+
+class SubRABill(Base):
+    __tablename__ = "sub_ra_bills"
+    id              = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    tenant_id       = Column(String, nullable=False)
+    bill_no         = Column(String(50), nullable=False)
+    ra_number       = Column(Integer, default=1)
+    contract_id     = Column(String, ForeignKey("sub_contracts.id", ondelete="CASCADE"))
+    bill_date       = Column(Date, nullable=False)
+    due_date        = Column(Date)
+    period_from     = Column(Date)
+    period_to       = Column(Date)
+    gross_amount    = Column(Float, default=0)
+    prev_billed     = Column(Float, default=0)
+    this_bill       = Column(Float, default=0)
+    advance_recovery= Column(Float, default=0)
+    retention_amt   = Column(Float, default=0)
+    tds_amt         = Column(Float, default=0)
+    gst_amt         = Column(Float, default=0)
+    net_payable     = Column(Float, default=0)
+    paid_amount     = Column(Float, default=0)
+    balance_due     = Column(Float, default=0)
+    status          = Column(Enum(SubRABillStatus), default=SubRABillStatus.draft)
+    notes           = Column(Text)
+    created_by      = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at      = Column(DateTime, server_default=func.now())
+    contract        = relationship("SubContract", back_populates="ra_bills")
+    bill_items      = relationship("SubRABillItem", back_populates="bill", cascade="all, delete")
+    payments        = relationship("SubPayment", back_populates="bill", cascade="all, delete")
+    __table_args__ = (Index("ix_sub_ra_bills_tenant", "tenant_id"),)
+
+class SubRABillItem(Base):
+    __tablename__ = "sub_ra_bill_items"
+    id              = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    bill_id         = Column(String, ForeignKey("sub_ra_bills.id", ondelete="CASCADE"))
+    milestone_id    = Column(String, ForeignKey("sub_milestones.id", ondelete="SET NULL"), nullable=True)
+    si_no           = Column(String(10))
+    description     = Column(String(500))
+    unit            = Column(String(20))
+    quantity        = Column(Float, default=0)
+    rate            = Column(Float, default=0)
+    contract_amount = Column(Float, default=0)
+    prev_amount     = Column(Float, default=0)
+    this_amount     = Column(Float, default=0)
+    completion_pct  = Column(Float, default=0)
+    status          = Column(Enum(MilestoneStatus))
+    bill            = relationship("SubRABill", back_populates="bill_items")
+
+class SubPayment(Base):
+    __tablename__ = "sub_payments"
+    id              = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    tenant_id       = Column(String, nullable=False)
+    bill_id         = Column(String, ForeignKey("sub_ra_bills.id", ondelete="CASCADE"))
+    contract_id     = Column(String, ForeignKey("sub_contracts.id", ondelete="SET NULL"), nullable=True)
+    date            = Column(Date, nullable=False)
+    amount          = Column(Float, nullable=False)
+    tds_deducted    = Column(Float, default=0)
+    net_paid        = Column(Float, default=0)
+    payment_mode    = Column(String(50))
+    ref_no          = Column(String(100))
+    is_advance      = Column(Boolean, default=False)
+    notes           = Column(Text)
+    created_at      = Column(DateTime, server_default=func.now())
+    bill            = relationship("SubRABill", back_populates="payments")
+    __table_args__ = (Index("ix_sub_payments_tenant", "tenant_id"),)

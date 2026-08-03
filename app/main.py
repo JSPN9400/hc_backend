@@ -10,6 +10,7 @@ from app.api.v1.endpoints.accounts import (
     bank_accounts_router, ledger_router, cashbook_router
 )
 from app.api.v1.endpoints.client_billing import router as client_router
+from app.api.v1.endpoints.subcontractor_billing import router as sub_router
 
 app = FastAPI(
     title="Happy Contractor API",
@@ -43,6 +44,7 @@ app.include_router(bank_accounts_router,   prefix=PREFIX)
 app.include_router(ledger_router,          prefix=PREFIX)
 app.include_router(cashbook_router,        prefix=PREFIX)
 app.include_router(client_router,          prefix=PREFIX)
+app.include_router(sub_router,             prefix=PREFIX)
 
 @app.on_event("startup")
 async def startup():
