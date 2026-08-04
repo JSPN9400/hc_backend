@@ -769,3 +769,119 @@ class SubPayment(Base):
     created_at      = Column(DateTime, server_default=func.now())
     bill            = relationship("SubRABill", back_populates="payments")
     __table_args__ = (Index("ix_sub_payments_tenant", "tenant_id"),)
+
+
+# ─────────────────────────────────────────────
+# CRM — leads / enquiries
+# ─────────────────────────────────────────────
+class LeadStatus(str, enum.Enum):
+    new="new"; contacted="contacted"; follow_up="follow_up"; site_visit="site_visit"
+    negotiation="negotiation"; won="won"; lost="lost"
+
+class LeadSource(str, enum.Enum):
+    referral="referral"; walk_in="walk_in"; phone="phone"; website="website"
+    social_media="social_media"; advertisement="advertisement"; other="other"
+
+class Lead(Base):
+    __tablename__ = "leads"
+    id              = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    tenant_id       = Column(String, nullable=False)
+    name            = Column(String(200), nullable=False)
+    phone           = Column(String(20))
+    email           = Column(String(200))
+    source          = Column(Enum(LeadSource), default=LeadSource.other)
+    status          = Column(Enum(LeadStatus), default=LeadStatus.new)
+    interested_in   = Column(String(300))
+    budget          = Column(Float, default=0)
+    location_pref   = Column(String(300))
+    notes           = Column(Text)
+    next_follow_up  = Column(Date)
+    assigned_to     = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    converted_site_id = Column(String, ForeignKey("sites.id", ondelete="SET NULL"), nullable=True)
+    lost_reason     = Column(String(300))
+    created_by      = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at      = Column(DateTime, server_default=func.now())
+    updated_at      = Column(DateTime, server_default=func.now(), onupdate=func.now())
+    activities      = relationship("LeadActivity", back_populates="lead", cascade="all, delete")
+    __table_args__ = (Index("ix_leads_tenant", "tenant_id"),)
+
+class LeadActivity(Base):
+    __tablename__ = "lead_activities"
+    id              = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    lead_id         = Column(String, ForeignKey("leads.id", ondelete="CASCADE"))
+    activity_type   = Column(String(30))   # call, meeting, site_visit, whatsapp, email, note
+    note            = Column(Text, nullable=False)
+    done_by         = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at      = Column(DateTime, server_default=func.now())
+    lead            = relationship("Lead", back_populates="activities")
+
+
+# ── Agreement templates + agreements ──
+class AgreementStatus(str, enum.Enum):
+    draft="draft"; sent="sent"; signed="signed"; rejected="rejected"
+
+class AgreementTemplate(Base):
+    __tablename__ = "agreement_templates"
+    id              = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    tenant_id       = Column(String, nullable=False)
+    name            = Column(String(200), nullable=False)
+    description     = Column(String(300))
+    content         = Column(Text, nullable=False)   # supports {{client_name}}, {{project_value}}, {{start_date}}, {{scope}}, {{company_name}}, {{advance_pct}} etc.
+    created_by      = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at      = Column(DateTime, server_default=func.now())
+    updated_at      = Column(DateTime, server_default=func.now(), onupdate=func.now())
+    __table_args__ = (Index("ix_agreement_templates_tenant", "tenant_id"),)
+
+class Agreement(Base):
+    __tablename__ = "agreements"
+    id              = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    tenant_id       = Column(String, nullable=False)
+    lead_id         = Column(String, ForeignKey("leads.id", ondelete="SET NULL"), nullable=True)
+    site_id         = Column(String, ForeignKey("sites.id", ondelete="SET NULL"), nullable=True)
+    template_id     = Column(String, ForeignKey("agreement_templates.id", ondelete="SET NULL"), nullable=True)
+    client_name     = Column(String(200), nullable=False)
+    title           = Column(String(200))
+    generated_content = Column(Text, nullable=False)
+    status          = Column(Enum(AgreementStatus), default=AgreementStatus.draft)
+    sent_date       = Column(Date)
+    signed_date     = Column(Date)
+    notes           = Column(Text)
+    created_by      = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at      = Column(DateTime, server_default=func.now())
+    __table_args__ = (Index("ix_agreements_tenant", "tenant_id"),)
+
+
+# ── Customer progress reports ──
+class CustomerReport(Base):
+    __tablename__ = "customer_reports"
+    id              = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    tenant_id       = Column(String, nullable=False)
+    lead_id         = Column(String, ForeignKey("leads.id", ondelete="SET NULL"), nullable=True)
+    site_id         = Column(String, ForeignKey("sites.id", ondelete="SET NULL"), nullable=True)
+    client_name     = Column(String(200))
+    report_date     = Column(Date, nullable=False)
+    progress_pct    = Column(Float, default=0)
+    work_summary    = Column(Text, nullable=False)
+    photo_urls      = Column(Text)
+    sent_via        = Column(String(20))   # whatsapp, email, both
+    sent_to         = Column(String(200))  # phone/email actually used
+    sent_at         = Column(DateTime)
+    created_by      = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at      = Column(DateTime, server_default=func.now())
+    __table_args__ = (Index("ix_customer_reports_tenant", "tenant_id"),)
+
+
+# ── Customer reviews / feedback ──
+class CustomerReview(Base):
+    __tablename__ = "customer_reviews"
+    id              = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    tenant_id       = Column(String, nullable=False)
+    lead_id         = Column(String, ForeignKey("leads.id", ondelete="SET NULL"), nullable=True)
+    site_id         = Column(String, ForeignKey("sites.id", ondelete="SET NULL"), nullable=True)
+    customer_name   = Column(String(200), nullable=False)
+    rating          = Column(Integer, nullable=False)   # 1-5
+    review_text     = Column(Text)
+    would_recommend = Column(Boolean, default=True)
+    recorded_by     = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at      = Column(DateTime, server_default=func.now())
+    __table_args__ = (Index("ix_customer_reviews_tenant", "tenant_id"),)
