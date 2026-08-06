@@ -313,6 +313,16 @@ class Vendor(Base):
 # ─────────────────────────────────────────────
 # EXPENSE
 # ─────────────────────────────────────────────
+class ExpenseCategory(Base):
+    __tablename__ = "expense_categories"
+    id              = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    tenant_id       = Column(String, nullable=False)
+    name            = Column(String(100), nullable=False)
+    is_active       = Column(Boolean, default=True)
+    created_at      = Column(DateTime, server_default=func.now())
+    __table_args__ = (Index("ix_expense_categories_tenant", "tenant_id"),)
+
+
 class Expense(Base):
     __tablename__ = "expenses"
 

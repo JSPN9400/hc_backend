@@ -7,14 +7,65 @@ import uuid
 
 from app.db.session import get_db
 from app.core.deps import get_current_user, require_perm
-from app.models.models import BankAccount, Expense, Vendor, AccountTypeEnum
+from app.models.models import BankAccount, Expense, Vendor, AccountTypeEnum, ExpenseCategory
 from app.schemas.schemas import (
     BankAccountCreate, BankAccountUpdate, BankAccountOut,
     PartyLedgerOut, LedgerRow, BankStatementOut,
     CashBookOut, CashBookDay,
 )
+from pydantic import BaseModel
 
 def gen_id(): return str(uuid.uuid4())
+
+
+# ─────────────────────────────────────────────
+# EXPENSE CATEGORIES (tags) — tenant can create/manage their own
+# ─────────────────────────────────────────────
+DEFAULT_CATEGORIES = [
+    'Labour Charges', 'Material Purchase', 'Sub-Contractor Payments',
+    'Transport', 'Fuel', 'Salary', 'Site Overheads', 'Equipment',
+    'Advance', 'Received', 'Miscellaneous'
+]
+
+categories_router = APIRouter(prefix="/categories", tags=["categories"])
+
+class CategoryIn(BaseModel):
+    name: str
+
+@categories_router.get("/")
+def list_categories(current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    tid = current_user["tenant_id"]
+    cats = db.query(ExpenseCategory).filter(ExpenseCategory.tenant_id == tid, ExpenseCategory.is_active == True).order_by(ExpenseCategory.name).all()
+    if not cats:
+        # First time — seed with the default list so nothing breaks for existing users
+        for name in DEFAULT_CATEGORIES:
+            db.add(ExpenseCategory(id=gen_id(), tenant_id=tid, name=name))
+        db.commit()
+        cats = db.query(ExpenseCategory).filter(ExpenseCategory.tenant_id == tid, ExpenseCategory.is_active == True).order_by(ExpenseCategory.name).all()
+    return [{"id": c.id, "name": c.name} for c in cats]
+
+@categories_router.post("/")
+def create_category(data: CategoryIn, current_user: dict = Depends(require_perm("expenses")), db: Session = Depends(get_db)):
+    tid = current_user["tenant_id"]
+    name = data.name.strip()
+    if not name: raise HTTPException(400, "Category name khaali nahi ho sakta")
+    exists = db.query(ExpenseCategory).filter(ExpenseCategory.tenant_id == tid, func.lower(ExpenseCategory.name) == name.lower(), ExpenseCategory.is_active == True).first()
+    if exists: raise HTTPException(400, "Ye category already exist karti hai")
+    c = ExpenseCategory(id=gen_id(), tenant_id=tid, name=name)
+    db.add(c); db.commit()
+    return {"id": c.id, "name": c.name}
+
+@categories_router.delete("/{cat_id}")
+def delete_category(cat_id: str, current_user: dict = Depends(require_perm("edit")), db: Session = Depends(get_db)):
+    tid = current_user["tenant_id"]
+    c = db.query(ExpenseCategory).filter(ExpenseCategory.id == cat_id, ExpenseCategory.tenant_id == tid).first()
+    if not c: raise HTTPException(404)
+    linked = db.query(func.count(Expense.id)).filter(Expense.tenant_id == tid, Expense.category == c.name, Expense.is_deleted == False).scalar()
+    if linked:
+        raise HTTPException(400, f"Cannot delete — {linked} expense(s) is category use kar rahe hain")
+    c.is_active = False
+    db.commit()
+    return {"message": "Category deleted"}
 
 
 # ─────────────────────────────────────────────

@@ -7,7 +7,7 @@ from app.api.v1.endpoints.misc import (
     users_router, dashboard_router, reports_router
 )
 from app.api.v1.endpoints.accounts import (
-    bank_accounts_router, ledger_router, cashbook_router
+    bank_accounts_router, ledger_router, cashbook_router, categories_router
 )
 from app.api.v1.endpoints.client_billing import router as client_router
 from app.api.v1.endpoints.subcontractor_billing import router as sub_router
@@ -44,6 +44,7 @@ app.include_router(reports_router,         prefix=PREFIX)
 app.include_router(bank_accounts_router,   prefix=PREFIX)
 app.include_router(ledger_router,          prefix=PREFIX)
 app.include_router(cashbook_router,        prefix=PREFIX)
+app.include_router(categories_router,      prefix=PREFIX)
 app.include_router(client_router,          prefix=PREFIX)
 app.include_router(sub_router,              prefix=PREFIX)
 app.include_router(leads_router,           prefix=PREFIX)

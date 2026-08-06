@@ -29,6 +29,14 @@ class LeadIn(BaseModel):
     assigned_to: Optional[str] = None
 
 class LeadUpdateIn(BaseModel):
+    name: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    source: Optional[LeadSource] = None
+    interested_in: Optional[str] = None
+    budget: Optional[float] = None
+    location_pref: Optional[str] = None
+    notes: Optional[str] = None
     status: Optional[LeadStatus] = None
     next_follow_up: Optional[date] = None
     assigned_to: Optional[str] = None
@@ -101,6 +109,14 @@ def get_lead(lid: str, current_user: dict = Depends(get_current_user), db: Sessi
 def update_lead(lid: str, data: LeadUpdateIn, current_user: dict = Depends(require_perm("expenses")), db: Session = Depends(get_db)):
     l = db.query(Lead).filter(Lead.id == lid, Lead.tenant_id == current_user["tenant_id"]).first()
     if not l: raise HTTPException(404)
+    if data.name is not None: l.name = data.name
+    if data.phone is not None: l.phone = data.phone
+    if data.email is not None: l.email = data.email
+    if data.source is not None: l.source = data.source
+    if data.interested_in is not None: l.interested_in = data.interested_in
+    if data.budget is not None: l.budget = data.budget
+    if data.location_pref is not None: l.location_pref = data.location_pref
+    if data.notes is not None: l.notes = data.notes
     if data.status is not None: l.status = data.status
     if data.next_follow_up is not None: l.next_follow_up = data.next_follow_up
     if data.assigned_to is not None: l.assigned_to = data.assigned_to
@@ -108,6 +124,14 @@ def update_lead(lid: str, data: LeadUpdateIn, current_user: dict = Depends(requi
     if data.converted_site_id is not None: l.converted_site_id = data.converted_site_id
     db.commit()
     return {"message": "Lead updated"}
+
+@router.delete("/{lid}")
+def delete_lead(lid: str, current_user: dict = Depends(require_perm("edit")), db: Session = Depends(get_db)):
+    l = db.query(Lead).filter(Lead.id == lid, Lead.tenant_id == current_user["tenant_id"]).first()
+    if not l: raise HTTPException(404)
+    db.delete(l)
+    db.commit()
+    return {"message": "Lead deleted"}
 
 @router.post("/{lid}/activity")
 def add_activity(lid: str, data: ActivityIn, current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
